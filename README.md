@@ -1,7 +1,3 @@
-Here's a detailed `README.md` file that explains how to use the Ansible playbook to deploy and configure the NESTJS boilerplate on a remote Ubuntu 22.04 server:
-
----
-
 # Automated Deployment and Configuration with Ansible for NESTJS Boilerplate
 
 This repository contains an Ansible playbook that automates the deployment and configuration of the NESTJS boilerplate on a remote Ubuntu 22.04 server.
@@ -17,64 +13,31 @@ This repository contains an Ansible playbook that automates the deployment and c
 
 2. **SSH Access**: Ensure SSH access to your remote server with sudo privileges.
 
-3. **Environment Variables**: Create a `.env` file on your local machine with the necessary sensitive values.
-
-## Setup
-
-### 1. Create the `.env` File
-
-Create a `.env` file in the same directory as your playbook with the following content:
-
-```env
-REPO_URL=https://github.com/hngprojects/hng_boilerplate_nestjs.git
-BRANCH=devops
-APP_DIR=/opt/stage_5b
-PG_PASSWORD=your_pg_password
-DB_NAME=mydatabase
-DB_USER=myuser
-DB_HOST=localhost
-DB_PORT=5432
-RABBITMQ_USER=myuser
-RABBITMQ_PASSWORD=mypassword
-```
-
-Replace the placeholder values with your actual configuration values.
-
-### 2. Create the `env_vars.yml` File
-
-Create a file named `env_vars.yml` in the same directory as your `main.yaml` playbook with the following content:
-
-```yaml
----
-repo_url: "{{ lookup('env', 'REPO_URL') }}"
-branch: "{{ lookup('env', 'BRANCH') }}"
-app_dir: "{{ lookup('env', 'APP_DIR') }}"
-pg_password: "{{ lookup('env', 'PG_PASSWORD') }}"
-db_name: "{{ lookup('env', 'DB_NAME') }}"
-db_user: "{{ lookup('env', 'DB_USER') }}"
-db_host: "{{ lookup('env', 'DB_HOST') }}"
-db_port: "{{ lookup('env', 'DB_PORT') }}"
-rabbitmq_user: "{{ lookup('env', 'RABBITMQ_USER') }}"
-rabbitmq_password: "{{ lookup('env', 'RABBITMQ_PASSWORD') }}"
-```
-
-### 3. Create the `main.yaml` Playbook
+### 1. Create the `main.yaml` Playbook
 
 Save the following Ansible playbook content in a file named `main.yaml`:
 
 ```yaml
 ---
+---
 - name: Automated Deployment and Configuration with Ansible for NESTJS
   hosts: hng
   become: yes
-  vars_files:
-    - ./env_vars.yml  # Include the environment variables file
+  vars:
+    repo_url: 'https://github.com/hngprojects/hng_boilerplate_nestjs.git'
+    branch: 'devops'
+    app_dir: '/opt/stage_5b'
+    pg_password: 'database_password'  # replace with a secure password or generate dynamically
+    db_name: 'database_name'
+    db_user: 'database_user'
+    db_host: 'localhost'
+    db_port: 5432
 
   tasks:
     - name: Update apt package index
       apt:
         update_cache: yes
-    
+
     - name: Install required packages
       apt:
         name:
@@ -139,8 +102,8 @@ Save the following Ansible playbook content in a file named `main.yaml`:
 
     - name: Configure RabbitMQ
       rabbitmq_user:
-        user: "{{ rabbitmq_user }}"
-        password: "{{ rabbitmq_password }}"
+        user: myuser
+        password: mypassword
         vhost: /
         configure_priv: .*
         read_priv: .*
@@ -152,7 +115,7 @@ Save the following Ansible playbook content in a file named `main.yaml`:
         dest: "{{ app_dir }}/.env"
         content: |
           DATABASE_URL=postgres://{{ db_user }}:{{ pg_password }}@{{ db_host }}:{{ db_port }}/{{ db_name }}
-          RABBITMQ_URL=amqp://{{ rabbitmq_user }}:{{ rabbitmq_password }}@localhost:5672/
+          RABBITMQ_URL=amqp://myuser:mypassword@localhost:5672/
           PORT=3000
         mode: '0644'
       become: yes
@@ -205,9 +168,10 @@ Save the following Ansible playbook content in a file named `main.yaml`:
       service:
         name: nginx
         state: restarted
+
 ```
 
-### 4. Create an Inventory File
+### 2. Create an Inventory File
 
 Create a file named `inventory.cfg` with the following content (replace `your_server_ip` with the actual IP address of your server and `your_user` with your SSH username):
 
@@ -216,15 +180,7 @@ Create a file named `inventory.cfg` with the following content (replace `your_se
 your_server_ip ansible_user=your_user
 ```
 
-### 5. Load Environment Variables
-
-Before running the playbook, load the environment variables from your local `.env` file:
-
-```sh
-export $(cat .env | xargs)
-```
-
-### 6. Run the Playbook
+### 3. Run the Playbook
 
 Run the Ansible playbook:
 
@@ -234,15 +190,12 @@ ansible-playbook -i inventory.cfg main.yaml -b
 
 ## Summary
 
-This setup automates the deployment and configuration of the NESTJS boilerplate on a remote Ubuntu 22.04 server. It ensures that all sensitive values and configuration parameters are securely managed through environment variables.
+This setup automates the deployment and configuration of the NESTJS boilerplate on a remote Ubuntu 22.04 server.
 
 ### Key Steps
 
-1. **Create a `.env` file** on your local machine with all the necessary variables.
-2. **Create the `env_vars.yml` file** to load environment variables into the playbook.
-3. **Create the `main.yaml` Ansible playbook** with the necessary tasks.
-4. **Create an inventory file** to specify the target server.
-5. **Load the environment variables** before running the playbook.
-6. **Run the Ansible playbook** to configure the remote server.
+1. **Create the `main.yaml` Ansible playbook** with the necessary tasks.
+2. **Create an inventory file** to specify the target server.
+3. **Run the Ansible playbook** to configure the remote server.
 
 This ensures a reproducible and automated deployment process for your NESTJS application.
