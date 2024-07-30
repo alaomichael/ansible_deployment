@@ -1,0 +1,9 @@
+---
+- name: Test sudo access
+  hosts: all
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+    - name: Print sudo access
+      command: whoami
