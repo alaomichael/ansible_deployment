@@ -4,7 +4,6 @@
   become: yes
   become_method: sudo
   become_user: root
-  become_pass: 'babatunde_25'
   tasks:
     - name: Print sudo access
       command: whoami
