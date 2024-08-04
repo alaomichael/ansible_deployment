@@ -155,9 +155,9 @@
 - name: Automated Deployment and Configuration with Ansible for NESTJS
   hosts: hng
   become: yes
-  become_method: sudo  # Explicitly specify the method of privilege escalation
-  become_user: root    # Specify the user to become
-  remote_tmp: /tmp/ansible_hng  # Custom temporary directory
+  # become_method: sudo  # Explicitly specify the method of privilege escalation
+  # become_user: root    # Specify the user to become
+  # remote_tmp: /tmp/ansible_hng  # Custom temporary directory
   vars:
     repo_url: 'https://github.com/hngprojects/hng_boilerplate_nestjs.git'
     branch: 'devops'
