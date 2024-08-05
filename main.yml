@@ -1,3 +1,4 @@
+
 # ---
 # - name: Automated Deployment and Configuration with Ansible for NESTJS
 #   hosts: hng
@@ -66,16 +67,24 @@
 #         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 #         [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 #         nvm install 18
+#         nvm use 18
 #       environment:
 #         HOME: "{{ ansible_env.HOME }}"
+#         PATH: "$HOME/.nvm/versions/node/v18/bin:$PATH"
+#       args:
+#         chdir: "{{ app_dir }}"
 
-#     - name: Set default Node.js version
+#     - name: Install Node.js dependencies
 #       shell: |
 #         export NVM_DIR="$HOME/.nvm"
 #         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-#         nvm alias default 18
+#         [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+#         npm install
 #       environment:
 #         HOME: "{{ ansible_env.HOME }}"
+#         PATH: "$HOME/.nvm/versions/node/v18/bin:$PATH"
+#       args:
+#         chdir: "{{ app_dir }}"
 
 #     - name: Add hng user with sudo privileges
 #       user:
@@ -108,26 +117,6 @@
 #         path: /var/log/stage_5b
 #         state: directory
 #         mode: '0755'
-
-#     - name: Install Node.js dependencies
-#       npm:
-#         path: "{{ app_dir }}"
-#         state: present
-#         production: yes
-#       environment:
-#         NODE_VERSION: "18"
-#         NVM_DIR: "$HOME/.nvm"
-#         PATH: "$NVM_DIR/versions/node/v18/bin:$PATH"
-
-#     - name: Install Husky
-#       npm:
-#         name: husky
-#         path: "{{ app_dir }}"
-#         state: present
-#       environment:
-#         NODE_VERSION: "18"
-#         NVM_DIR: "$HOME/.nvm"
-#         PATH: "$NVM_DIR/versions/node/v18/bin:$PATH"
 
 #     - name: Configure PostgreSQL database
 #       postgresql_db:
@@ -210,7 +199,6 @@
 #         state: restarted
 
 
-
 ---
 - name: Automated Deployment and Configuration with Ansible for NESTJS
   hosts: hng
@@ -247,10 +235,6 @@
         state: directory
         mode: '0700'
 
-    - name: Set Ansible to use the user-specific temporary directory
-      set_fact:
-        ansible_remote_tmp: "{{ ansible_remote_tmp }}"
-
     - name: Update apt package index
       apt:
         update_cache: yes
@@ -265,38 +249,46 @@
           - postgresql-contrib
           - rabbitmq-server
           - npm
+          - curl
+          - wget
+          - gnupg
+          - lsb-release
         state: present
 
     - name: Install nvm (Node Version Manager)
-      shell: >
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
-      args:
-        creates: /usr/local/nvm
-
-    - name: Source nvm and install Node.js
       shell: |
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
         export NVM_DIR="$HOME/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+      environment:
+        HOME: "{{ ansible_env.HOME }}"
+      args:
+        chdir: "{{ ansible_home }}"
+        executable: /bin/bash
+
+    - name: Install Node.js and npm using nvm
+      shell: |
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         nvm install 18
         nvm use 18
       environment:
         HOME: "{{ ansible_env.HOME }}"
-        PATH: "$HOME/.nvm/versions/node/v18/bin:$PATH"
       args:
         chdir: "{{ app_dir }}"
+        executable: /bin/bash
 
     - name: Install Node.js dependencies
       shell: |
         export NVM_DIR="$HOME/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-        [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
         npm install
       environment:
         HOME: "{{ ansible_env.HOME }}"
-        PATH: "$HOME/.nvm/versions/node/v18/bin:$PATH"
       args:
         chdir: "{{ app_dir }}"
+        executable: /bin/bash
 
     - name: Add hng user with sudo privileges
       user:
