@@ -66,16 +66,24 @@
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
         nvm install 18
+        nvm use 18
       environment:
         HOME: "{{ ansible_env.HOME }}"
+        PATH: "$HOME/.nvm/versions/node/v18/bin:$PATH"
+      args:
+        chdir: "{{ app_dir }}"
 
-    - name: Set default Node.js version
+    - name: Install Node.js dependencies
       shell: |
         export NVM_DIR="$HOME/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-        nvm alias default 18
+        [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+        npm install
       environment:
         HOME: "{{ ansible_env.HOME }}"
+        PATH: "$HOME/.nvm/versions/node/v18/bin:$PATH"
+      args:
+        chdir: "{{ app_dir }}"
 
     - name: Add hng user with sudo privileges
       user:
@@ -108,26 +116,6 @@
         path: /var/log/stage_5b
         state: directory
         mode: '0755'
-
-    - name: Install Node.js dependencies
-      npm:
-        path: "{{ app_dir }}"
-        state: present
-        production: yes
-      environment:
-        NODE_VERSION: "18"
-        NVM_DIR: "$HOME/.nvm"
-        PATH: "$NVM_DIR/versions/node/v18/bin:$PATH"
-
-    - name: Install Husky
-      npm:
-        name: husky
-        path: "{{ app_dir }}"
-        state: present
-      environment:
-        NODE_VERSION: "18"
-        NVM_DIR: "$HOME/.nvm"
-        PATH: "$NVM_DIR/versions/node/v18/bin:$PATH"
 
     - name: Configure PostgreSQL database
       postgresql_db:
