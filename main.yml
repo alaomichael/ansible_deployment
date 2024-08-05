@@ -11,7 +11,8 @@
     db_user: 'alaomichael'
     db_host: 'localhost'
     db_port: 5432
-    ansible_remote_tmp: "/var/tmp/ansible_{{ ansible_user_id }}_tmp"  # Define a tmp directory with permissions
+    # ansible_remote_tmp: "/var/tmp/ansible_{{ ansible_user_id }}_tmp"  # Define a tmp directory with permissions
+    ansible_remote_tmp: "/tmp/ansible_tmp"  # Set a default tmp directory in /tmp
 
   tasks:
     - name: Ensure /tmp has correct permissions
