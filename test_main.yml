@@ -1,3 +1,206 @@
+---
+- name: Automated Deployment and Configuration with Ansible for NESTJS
+  hosts: hng
+  become: yes
+  vars:
+    repo_url: 'https://github.com/hngprojects/hng_boilerplate_nestjs.git'
+    branch: 'devops'
+    app_dir: '/opt/stage_5b'
+    pg_password: 'babatunde_25'  # Replace with a secure password or generate dynamically
+    db_name: 'ansible_deployment'
+    db_user: 'alaomichael'
+    db_host: 'localhost'
+    db_port: 5432
+    ansible_remote_tmp: "/var/tmp/ansible_{{ ansible_user_id }}_tmp"  # Define a tmp directory with permissions
+
+  tasks:
+    - name: Ensure /tmp has correct permissions
+      file:
+        path: /tmp
+        state: directory
+        mode: '1777'
+
+    - name: Create a user-specific temporary directory
+      file:
+        path: "{{ ansible_remote_tmp }}"
+        state: directory
+        mode: '0700'
+
+    - name: Set Ansible to use the user-specific temporary directory
+      set_fact:
+        ansible_remote_tmp: "{{ ansible_remote_tmp }}"
+
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - git
+          - python3-pip
+          - nginx
+          - postgresql
+          - postgresql-contrib
+          - rabbitmq-server
+          - npm
+        state: present
+
+    - name: Install nvm (Node Version Manager)
+      shell: >
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+      args:
+        creates: /usr/local/nvm
+
+    - name: Source nvm and install Node.js
+      shell: |
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+        nvm install 18
+      environment:
+        HOME: "{{ ansible_env.HOME }}"
+
+    - name: Set default Node.js version
+      shell: |
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        nvm alias default 18
+      environment:
+        HOME: "{{ ansible_env.HOME }}"
+
+    - name: Add hng user with sudo privileges
+      user:
+        name: hng
+        shell: /bin/bash
+        groups: sudo
+        append: yes
+
+    - name: Clone the devops branch of the repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: "{{ branch }}"
+        force: yes
+
+    - name: Ensure /var/secrets directory exists
+      file:
+        path: /var/secrets
+        state: directory
+        mode: '0755'
+
+    - name: Save PostgreSQL admin credentials
+      copy:
+        dest: /var/secrets/pg_pw.txt
+        content: "{{ db_user }}:{{ pg_password }}"
+        mode: '0600'
+
+    - name: Ensure /var/log/stage_5b directory exists
+      file:
+        path: /var/log/stage_5b
+        state: directory
+        mode: '0755'
+
+    - name: Install Node.js dependencies
+      npm:
+        path: "{{ app_dir }}"
+        state: present
+        production: yes
+      environment:
+        NODE_VERSION: "18"
+        NVM_DIR: "$HOME/.nvm"
+        PATH: "$NVM_DIR/versions/node/v18/bin:$PATH"
+
+    - name: Install Husky
+      npm:
+        name: husky
+        path: "{{ app_dir }}"
+        state: present
+      environment:
+        NODE_VERSION: "18"
+        NVM_DIR: "$HOME/.nvm"
+        PATH: "$NVM_DIR/versions/node/v18/bin:$PATH"
+
+    - name: Configure PostgreSQL database
+      postgresql_db:
+        name: "{{ db_name }}"
+        state: present
+
+    - name: Create PostgreSQL user
+      postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ pg_password }}"
+        priv: "ALL"
+        state: present
+
+    - name: Configure RabbitMQ
+      rabbitmq_user:
+        user: guest
+        password: guest
+        vhost: /
+        configure_priv: .*
+        read_priv: .*
+        write_priv: .*
+        state: present
+
+    - name: Configure environment variables
+      copy:
+        dest: "{{ app_dir }}/.env"
+        content: |
+          DATABASE_URL=postgres://{{ db_user }}:{{ pg_password }}@{{ db_host }}:{{ db_port }}/{{ db_name }}
+          RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+          PORT=3000
+        mode: '0644'
+
+    - name: Start the application
+      command: "nohup npm run start:prod > /var/log/stage_5b/out.log 2> /var/log/stage_5b/error.log &"
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Set ownership of log files
+      file:
+        path: "/var/log/stage_5b"
+        state: directory
+        recurse: yes
+        owner: hng
+        group: hng
+
+    - name: Configure Nginx to reverse proxy
+      copy:
+        dest: /etc/nginx/sites-available/stage_5b
+        content: |
+          server {
+              listen 80;
+
+              server_name _;
+
+              location / {
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+          }
+      notify: Restart nginx
+
+    - name: Enable Nginx site
+      file:
+        src: /etc/nginx/sites-available/stage_5b
+        dest: /etc/nginx/sites-enabled/stage_5b
+        state: link
+
+    - name: Remove default Nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+  handlers:
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+
 
 # ---
 # - name: Automated Deployment and Configuration with Ansible for NESTJS
@@ -12,6 +215,7 @@
 #     db_user: 'alaomichael'
 #     db_host: 'localhost'
 #     db_port: 5432
+#     ansible_remote_tmp: "/tmp/ansible_{{ ansible_user_id }}_tmp"  # Define user-specific tmp directory
 
 #   tasks:
 #     - name: Ensure /tmp has correct permissions
@@ -19,16 +223,16 @@
 #         path: /tmp
 #         state: directory
 #         mode: '1777'
-    
+
 #     - name: Create a user-specific temporary directory
 #       file:
-#         path: "{{ ansible_env.HOME }}/ansible_tmp"
+#         path: "{{ ansible_remote_tmp }}"
 #         state: directory
 #         mode: '0700'
 
 #     - name: Set Ansible to use the user-specific temporary directory
 #       set_fact:
-#         ansible_remote_tmp: "{{ ansible_env.HOME }}/ansible_tmp"
+#         ansible_remote_tmp: "{{ ansible_remote_tmp }}"
 
 #     - name: Update apt package index
 #       apt:
@@ -43,9 +247,31 @@
 #           - postgresql
 #           - postgresql-contrib
 #           - rabbitmq-server
-#           - nodejs
 #           - npm
 #         state: present
+
+#     - name: Install nvm (Node Version Manager)
+#       shell: >
+#         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+#       args:
+#         creates: /usr/local/nvm
+
+#     - name: Source nvm and install Node.js 18
+#       shell: |
+#         export NVM_DIR="$HOME/.nvm"
+#         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+#         [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+#         nvm install 18
+#       environment:
+#         HOME: "{{ ansible_env.HOME }}"
+
+#     - name: Set default Node.js version
+#       shell: |
+#         export NVM_DIR="$HOME/.nvm"
+#         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+#         nvm alias default 18
+#       environment:
+#         HOME: "{{ ansible_env.HOME }}"
 
 #     - name: Add hng user with sudo privileges
 #       user:
@@ -84,6 +310,20 @@
 #         path: "{{ app_dir }}"
 #         state: present
 #         production: yes
+#       environment:
+#         NODE_VERSION: "18"
+#         NVM_DIR: "{{ ansible_env.HOME }}/.nvm"
+#         PATH: "{{ ansible_env.HOME }}/.nvm/versions/node/v18/bin:{{ ansible_env.PATH }}"
+
+#     - name: Install Husky
+#       npm:
+#         name: husky
+#         path: "{{ app_dir }}"
+#         state: present
+#       environment:
+#         NODE_VERSION: "18"
+#         NVM_DIR: "{{ ansible_env.HOME }}/.nvm"
+#         PATH: "{{ ansible_env.HOME }}/.nvm/versions/node/v18/bin:{{ ansible_env.PATH }}"
 
 #     - name: Configure PostgreSQL database
 #       postgresql_db:
@@ -165,169 +405,208 @@
 #         name: nginx
 #         state: restarted
 
----
-- name: Automated Deployment and Configuration with Ansible for NESTJS
-  hosts: hng
-  become: yes
-  vars:
-    repo_url: 'https://github.com/hngprojects/hng_boilerplate_nestjs.git'
-    branch: 'devops'
-    app_dir: '/opt/stage_5b'
-    pg_password: 'babatunde_25'  # Replace with a secure password or generate dynamically
-    db_name: 'ansible_deployment'
-    db_user: 'alaomichael'
-    db_host: 'localhost'
-    db_port: 5432
-    ansible_remote_tmp: "/tmp/ansible_${USER}_tmp"  # Define user-specific tmp directory
 
-  tasks:
-    - name: Ensure /tmp has correct permissions
-      file:
-        path: /tmp
-        state: directory
-        mode: '1777'
-    
-    - name: Create a user-specific temporary directory
-      file:
-        path: "{{ ansible_remote_tmp }}"
-        state: directory
-        mode: '0700'
 
-    - name: Set Ansible to use the user-specific temporary directory
-      set_fact:
-        ansible_remote_tmp: "{{ ansible_remote_tmp }}"
 
-    - name: Update apt package index
-      apt:
-        update_cache: yes
+# ---
+# - name: Automated Deployment and Configuration with Ansible for NESTJS
+#   hosts: hng
+#   become: yes
+#   vars:
+#     repo_url: 'https://github.com/hngprojects/hng_boilerplate_nestjs.git'
+#     branch: 'devops'
+#     app_dir: '/opt/stage_5b'
+#     pg_password: 'babatunde_25'  # Replace with a secure password or generate dynamically
+#     db_name: 'ansible_deployment'
+#     db_user: 'alaomichael'
+#     db_host: 'localhost'
+#     db_port: 5432
+#     ansible_remote_tmp: "/tmp/ansible_{{ ansible_user_id }}_tmp"  # Define user-specific tmp directory
 
-    - name: Install required packages
-      apt:
-        name:
-          - git
-          - python3-pip
-          - nginx
-          - postgresql
-          - postgresql-contrib
-          - rabbitmq-server
-          - nodejs
-          - npm
-        state: present
+#   tasks:
+#     - name: Ensure /tmp has correct permissions
+#       file:
+#         path: /tmp
+#         state: directory
+#         mode: '1777'
 
-    - name: Add hng user with sudo privileges
-      user:
-        name: hng
-        shell: /bin/bash
-        groups: sudo
-        append: yes
+#     - name: Create a user-specific temporary directory
+#       file:
+#         path: "{{ ansible_remote_tmp }}"
+#         state: directory
+#         mode: '0700'
 
-    - name: Clone the devops branch of the repository
-      git:
-        repo: "{{ repo_url }}"
-        dest: "{{ app_dir }}"
-        version: "{{ branch }}"
-        force: yes
+#     - name: Set Ansible to use the user-specific temporary directory
+#       set_fact:
+#         ansible_remote_tmp: "{{ ansible_remote_tmp }}"
 
-    - name: Ensure /var/secrets directory exists
-      file:
-        path: /var/secrets
-        state: directory
-        mode: '0755'
+#     - name: Update apt package index
+#       apt:
+#         update_cache: yes
 
-    - name: Save PostgreSQL admin credentials
-      copy:
-        dest: /var/secrets/pg_pw.txt
-        content: "{{ db_user }}:{{ pg_password }}"
-        mode: '0600'
+#     - name: Install required packages
+#       apt:
+#         name:
+#           - git
+#           - python3-pip
+#           - nginx
+#           - postgresql
+#           - postgresql-contrib
+#           - rabbitmq-server
+#           - npm
+#         state: present
 
-    - name: Ensure /var/log/stage_5b directory exists
-      file:
-        path: /var/log/stage_5b
-        state: directory
-        mode: '0755'
+#     - name: Install nvm (Node Version Manager)
+#       shell: >
+#         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+#       args:
+#         creates: /usr/local/nvm
 
-    - name: Install Node.js dependencies
-      npm:
-        path: "{{ app_dir }}"
-        state: present
-        production: yes
+#     - name: Source nvm and install Node.js
+#       shell: |
+#         export NVM_DIR="$HOME/.nvm"
+#         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+#         [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+#         nvm install 18
+#       environment:
+#         HOME: "{{ ansible_env.HOME }}"
 
-    - name: Configure PostgreSQL database
-      postgresql_db:
-        name: "{{ db_name }}"
-        state: present
+#     - name: Set default Node.js version
+#       shell: |
+#         export NVM_DIR="$HOME/.nvm"
+#         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+#         nvm alias default 18
+#       environment:
+#         HOME: "{{ ansible_env.HOME }}"
 
-    - name: Create PostgreSQL user
-      postgresql_user:
-        name: "{{ db_user }}"
-        password: "{{ pg_password }}"
-        priv: "ALL"
-        state: present
+#     - name: Add hng user with sudo privileges
+#       user:
+#         name: hng
+#         shell: /bin/bash
+#         groups: sudo
+#         append: yes
 
-    - name: Configure RabbitMQ
-      rabbitmq_user:
-        user: guest
-        password: guest
-        vhost: /
-        configure_priv: .*
-        read_priv: .*
-        write_priv: .*
-        state: present
+#     - name: Clone the devops branch of the repository
+#       git:
+#         repo: "{{ repo_url }}"
+#         dest: "{{ app_dir }}"
+#         version: "{{ branch }}"
+#         force: yes
 
-    - name: Configure environment variables
-      copy:
-        dest: "{{ app_dir }}/.env"
-        content: |
-          DATABASE_URL=postgres://{{ db_user }}:{{ pg_password }}@{{ db_host }}:{{ db_port }}/{{ db_name }}
-          RABBITMQ_URL=amqp://guest:guest@localhost:5672/
-          PORT=3000
-        mode: '0644'
+#     - name: Ensure /var/secrets directory exists
+#       file:
+#         path: /var/secrets
+#         state: directory
+#         mode: '0755'
 
-    - name: Start the application
-      command: "nohup npm run start:prod > /var/log/stage_5b/out.log 2> /var/log/stage_5b/error.log &"
-      args:
-        chdir: "{{ app_dir }}"
+#     - name: Save PostgreSQL admin credentials
+#       copy:
+#         dest: /var/secrets/pg_pw.txt
+#         content: "{{ db_user }}:{{ pg_password }}"
+#         mode: '0600'
 
-    - name: Set ownership of log files
-      file:
-        path: "/var/log/stage_5b"
-        state: directory
-        recurse: yes
-        owner: hng
-        group: hng
+#     - name: Ensure /var/log/stage_5b directory exists
+#       file:
+#         path: /var/log/stage_5b
+#         state: directory
+#         mode: '0755'
 
-    - name: Configure Nginx to reverse proxy
-      copy:
-        dest: /etc/nginx/sites-available/stage_5b
-        content: |
-          server {
-              listen 80;
+#     - name: Install Node.js dependencies
+#       npm:
+#         path: "{{ app_dir }}"
+#         state: present
+#         production: yes
+#       environment:
+#         NODE_VERSION: "18"
+#         NVM_DIR: "$HOME/.nvm"
+#         PATH: "$NVM_DIR/versions/node/v18/bin:$PATH"
 
-              server_name _;
+#     - name: Install Husky
+#       npm:
+#         name: husky
+#         path: "{{ app_dir }}"
+#         state: present
+#       environment:
+#         NODE_VERSION: "18"
+#         NVM_DIR: "$HOME/.nvm"
+#         PATH: "$NVM_DIR/versions/node/v18/bin:$PATH"
 
-              location / {
-                  proxy_pass http://127.0.0.1:3000;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-              }
-          }
-      notify: Restart nginx
+#     - name: Configure PostgreSQL database
+#       postgresql_db:
+#         name: "{{ db_name }}"
+#         state: present
 
-    - name: Enable Nginx site
-      file:
-        src: /etc/nginx/sites-available/stage_5b
-        dest: /etc/nginx/sites-enabled/stage_5b
-        state: link
+#     - name: Create PostgreSQL user
+#       postgresql_user:
+#         name: "{{ db_user }}"
+#         password: "{{ pg_password }}"
+#         priv: "ALL"
+#         state: present
 
-    - name: Remove default Nginx site
-      file:
-        path: /etc/nginx/sites-enabled/default
-        state: absent
+#     - name: Configure RabbitMQ
+#       rabbitmq_user:
+#         user: guest
+#         password: guest
+#         vhost: /
+#         configure_priv: .*
+#         read_priv: .*
+#         write_priv: .*
+#         state: present
 
-  handlers:
-    - name: Restart nginx
-      service:
-        name: nginx
-        state: restarted
+#     - name: Configure environment variables
+#       copy:
+#         dest: "{{ app_dir }}/.env"
+#         content: |
+#           DATABASE_URL=postgres://{{ db_user }}:{{ pg_password }}@{{ db_host }}:{{ db_port }}/{{ db_name }}
+#           RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+#           PORT=3000
+#         mode: '0644'
+
+#     - name: Start the application
+#       command: "nohup npm run start:prod > /var/log/stage_5b/out.log 2> /var/log/stage_5b/error.log &"
+#       args:
+#         chdir: "{{ app_dir }}"
+
+#     - name: Set ownership of log files
+#       file:
+#         path: "/var/log/stage_5b"
+#         state: directory
+#         recurse: yes
+#         owner: hng
+#         group: hng
+
+#     - name: Configure Nginx to reverse proxy
+#       copy:
+#         dest: /etc/nginx/sites-available/stage_5b
+#         content: |
+#           server {
+#               listen 80;
+
+#               server_name _;
+
+#               location / {
+#                   proxy_pass http://127.0.0.1:3000;
+#                   proxy_set_header Host $host;
+#                   proxy_set_header X-Real-IP $remote_addr;
+#                   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#                   proxy_set_header X-Forwarded-Proto $scheme;
+#               }
+#           }
+#       notify: Restart nginx
+
+#     - name: Enable Nginx site
+#       file:
+#         src: /etc/nginx/sites-available/stage_5b
+#         dest: /etc/nginx/sites-enabled/stage_5b
+#         state: link
+
+#     - name: Remove default Nginx site
+#       file:
+#         path: /etc/nginx/sites-enabled/default
+#         state: absent
+
+#   handlers:
+#     - name: Restart nginx
+#       service:
+#         name: nginx
+#         state: restarted
