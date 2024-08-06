@@ -6,12 +6,12 @@
 #     repo_url: 'https://github.com/hngprojects/hng_boilerplate_nestjs.git'
 #     branch: 'devops'
 #     app_dir: '/opt/stage_5b'
-#     pg_password: 'babatunde_25'  # Replace with a secure password or generate dynamically
+#     pg_password: 'babatunde_25'
 #     db_name: 'ansible_deployment'
 #     db_user: 'alaomichael'
 #     db_host: 'localhost'
 #     db_port: 5432
-#     ansible_remote_tmp: "/tmp/ansible_tmp"  # Define a tmp directory with permissions
+#     ansible_remote_tmp: "/tmp/ansible_tmp"
 
 #   tasks:
 #     - name: Ensure /tmp/ansible_tmp directory has correct permissions
@@ -28,11 +28,17 @@
 #         state: directory
 #         mode: '1777'
 
-#     - name: Create a user-specific temporary directory
+#     - name: Create application directory
 #       file:
-#         path: "{{ ansible_remote_tmp }}/{{ ansible_user_id }}"
+#         path: "{{ app_dir }}"
 #         state: directory
-#         mode: '0700'
+#         mode: '0755'
+
+#     - name: Ensure /var/log/stage_5b directory exists
+#       file:
+#         path: /var/log/stage_5b
+#         state: directory
+#         mode: '0755'
 
 #     - name: Update apt package index
 #       apt:
@@ -54,19 +60,6 @@
 #           - lsb-release
 #         state: present
 
-#     - name: Create application directory
-#       file:
-#         path: "{{ app_dir }}"
-#         state: directory
-#         mode: '0755'
-
-#     - name: Clone the devops branch of the repository
-#       git:
-#         repo: "{{ repo_url }}"
-#         dest: "{{ app_dir }}"
-#         version: "{{ branch }}"
-#         force: yes
-
 #     - name: Install nvm (Node Version Manager)
 #       shell: |
 #         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
@@ -76,6 +69,7 @@
 #       environment:
 #         HOME: "{{ ansible_env.HOME }}"
 #       args:
+#         chdir: "{{ ansible_env.HOME }}"
 #         executable: /bin/bash
 
 #     - name: Install Node.js and npm using nvm
@@ -87,7 +81,15 @@
 #       environment:
 #         HOME: "{{ ansible_env.HOME }}"
 #       args:
+#         chdir: "{{ ansible_env.HOME }}"
 #         executable: /bin/bash
+
+#     - name: Clone the devops branch of the repository
+#       git:
+#         repo: "{{ repo_url }}"
+#         dest: "{{ app_dir }}"
+#         version: "{{ branch }}"
+#         force: yes
 
 #     - name: Install Node.js dependencies
 #       shell: |
@@ -107,13 +109,6 @@
 #         groups: sudo
 #         append: yes
 
-#     - name: Clone the devops branch of the repository
-#       git:
-#         repo: "{{ repo_url }}"
-#         dest: "{{ app_dir }}"
-#         version: "{{ branch }}"
-#         force: yes
-
 #     - name: Ensure /var/secrets directory exists
 #       file:
 #         path: /var/secrets
@@ -126,11 +121,11 @@
 #         content: "{{ db_user }}:{{ pg_password }}"
 #         mode: '0600'
 
-#     - name: Ensure /var/log/stage_5b directory exists
-#       file:
-#         path: /var/log/stage_5b
-#         state: directory
-#         mode: '0755'
+#     - name: Ensure PostgreSQL is running
+#       service:
+#         name: postgresql
+#         state: started
+#         enabled: yes
 
 #     - name: Configure PostgreSQL database
 #       postgresql_db:
@@ -143,6 +138,12 @@
 #         password: "{{ pg_password }}"
 #         priv: "ALL"
 #         state: present
+
+#     - name: Ensure RabbitMQ is running
+#       service:
+#         name: rabbitmq-server
+#         state: started
+#         enabled: yes
 
 #     - name: Configure RabbitMQ
 #       rabbitmq_user:
@@ -213,7 +214,6 @@
 #         state: restarted
 
 
----
 - name: Automated Deployment and Configuration with Ansible for NESTJS
   hosts: hng
   become: yes
@@ -254,6 +254,10 @@
         path: /var/log/stage_5b
         state: directory
         mode: '0755'
+
+    - name: Clean up application directory if it exists
+      command: rm -rf "{{ app_dir }}/*"
+      when: app_dir is defined and app_dir != ''
 
     - name: Update apt package index
       apt:
@@ -304,7 +308,7 @@
         repo: "{{ repo_url }}"
         dest: "{{ app_dir }}"
         version: "{{ branch }}"
-        force: yes
+        force: true
 
     - name: Install Node.js dependencies
       shell: |
