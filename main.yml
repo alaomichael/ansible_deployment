@@ -440,9 +440,11 @@
         password: "{{ pg_password }}"
         state: present
         login_user: postgres
+        login_password: "{{ pg_password }}"
         login_host: localhost
         login_port: 5432
-
+        port: 5432
+        encrypted: true
 
     - name: Configure PostgreSQL database
       postgresql_db:
