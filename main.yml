@@ -428,12 +428,21 @@
         regexp: '^local\s+all\s+all\s+peer'
         line: 'local   all             all                                     md5'
       notify: Restart PostgreSQL
+        
+    - name: Restart PostgreSQL
+      service:
+        name: postgresql
+        state: restarted
 
     - name: Set PostgreSQL password for user postgres
       postgresql_user:
         name: postgres
         password: "{{ pg_password }}"
         state: present
+        login_user: postgres
+        login_host: localhost
+        login_port: 5432
+
 
     - name: Configure PostgreSQL database
       postgresql_db:
