@@ -468,7 +468,7 @@
         login_host: localhost
         login_port: 5432
         encrypted: true
-      no_log: true
+      no_log: false
 
     - name: Configure PostgreSQL database
       postgresql_db:
@@ -479,7 +479,7 @@
         port: 5432
         ssl_mode: prefer
         maintenance_db: postgres
-      no_log: true
+      no_log: false
 
     - name: Create PostgreSQL user
       postgresql_user:
@@ -492,7 +492,7 @@
         login_host: localhost
         login_port: 5432
         encrypted: true
-      no_log: true
+      no_log: false
 
     - name: Ensure RabbitMQ is running
       service:
