@@ -365,6 +365,18 @@
         content: "{{ db_user }}:{{ pg_password }}"
         mode: '0600'
 
+    - name: Install psycopg2 dependencies
+      apt:
+        name:
+          - python3-psycopg2
+          - python3-bcrypt
+        state: present
+
+    - name: Ensure psycopg2 is installed
+      pip:
+        name: psycopg2-binary
+        state: present        
+
     - name: Ensure PostgreSQL is running
       service:
         name: postgresql
