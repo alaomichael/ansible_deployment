@@ -173,11 +173,6 @@
 #         regexp: '^local\s+all\s+all\s+peer'
 #         line: 'local   all             all                                     md5'
 #       notify: Restart PostgreSQL
-        
-#     - name: Restart PostgreSQL
-#       service:
-#         name: postgresql
-#         state: restarted
 
 #     - name: Set PostgreSQL password for user postgres
 #       postgresql_user:
@@ -188,15 +183,14 @@
 #         login_password: "{{ pg_password }}"
 #         login_host: localhost
 #         login_port: 5432
-#         port: 5432
 #         encrypted: true
 
 #     - name: Configure PostgreSQL database
 #       postgresql_db:
-#         name: ansible_deployment
+#         name: "{{ db_name }}"
 #         state: present
 #         login_user: postgres
-#         login_password: "{{ postgres_password }}"
+#         login_password: "{{ pg_password }}"
 #         port: 5432
 #         ssl_mode: prefer
 
@@ -285,7 +279,6 @@
 #       service:
 #         name: postgresql
 #         state: restarted
-
 
 
 ---
@@ -450,7 +443,7 @@
       pip:
         name: psycopg2-binary
         state: present        
-
+    
     - name: Ensure PostgreSQL is running
       service:
         name: postgresql
@@ -462,6 +455,7 @@
         path: /etc/postgresql/12/main/pg_hba.conf
         regexp: '^local\s+all\s+all\s+peer'
         line: 'local   all             all                                     md5'
+        state: present
       notify: Restart PostgreSQL
 
     - name: Set PostgreSQL password for user postgres
@@ -474,6 +468,7 @@
         login_host: localhost
         login_port: 5432
         encrypted: true
+      no_log: true
 
     - name: Configure PostgreSQL database
       postgresql_db:
@@ -483,13 +478,21 @@
         login_password: "{{ pg_password }}"
         port: 5432
         ssl_mode: prefer
+        maintenance_db: postgres
+      no_log: true
 
     - name: Create PostgreSQL user
       postgresql_user:
         name: "{{ db_user }}"
         password: "{{ pg_password }}"
-        priv: "ALL"
+        priv: "ALL PRIVILEGES ON DATABASE {{ db_name }} TO {{ db_user }}"
         state: present
+        login_user: postgres
+        login_password: "{{ pg_password }}"
+        login_host: localhost
+        login_port: 5432
+        encrypted: true
+      no_log: true
 
     - name: Ensure RabbitMQ is running
       service:
