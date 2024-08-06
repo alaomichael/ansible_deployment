@@ -209,19 +209,6 @@
         login_port: 5432
         encrypted: true
       no_log: false  # Temporarily turn off no_log to view potential errors
-                            
-    # - name: Grant all privileges on the database to the PostgreSQL user
-      postgresql_privs:
-        db: "{{ db_name }}"
-        objs: ALL
-        priv: ALL
-        roles: "{{ db_user }}"
-        state: present
-        login_user: postgres
-        login_password: "{{ pg_password }}"
-        login_host: localhost
-        login_port: 5432
-      no_log: false  # Temporarily turn off no_log to view potential errors
 
     - name: Grant all privileges on the database to the PostgreSQL user
       postgresql_query:
