@@ -54,11 +54,57 @@
           - lsb-release
         state: present
 
+    # - name: Create application directory
+    #   file:
+    #     path: "{{ app_dir }}"
+    #     state: directory
+    #     mode: '0755'        
+
+    # - name: Install nvm (Node Version Manager)
+    #   shell: |
+    #     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+    #     export NVM_DIR="$HOME/.nvm"
+    #     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    #     [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+    #   environment:
+    #     HOME: "{{ ansible_env.HOME }}"
+    #   args:
+    #     executable: /bin/bash
+
+    # - name: Install Node.js and npm using nvm
+    #   shell: |
+    #     export NVM_DIR="$HOME/.nvm"
+    #     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    #     nvm install 18
+    #     nvm use 18
+    #   environment:
+    #     HOME: "{{ ansible_env.HOME }}"
+    #   args:
+    #     executable: /bin/bash
+
+    # - name: Install Node.js dependencies
+    #   shell: |
+    #     export NVM_DIR="$HOME/.nvm"
+    #     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    #     npm install
+    #   environment:
+    #     HOME: "{{ ansible_env.HOME }}"
+    #   args:
+    #     chdir: "{{ app_dir }}"
+    #     executable: /bin/bash
+
     - name: Create application directory
       file:
         path: "{{ app_dir }}"
         state: directory
-        mode: '0755'        
+        mode: '0755'
+
+    - name: Clone the devops branch of the repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: "{{ branch }}"
+        force: yes
 
     - name: Install nvm (Node Version Manager)
       shell: |
