@@ -140,12 +140,48 @@
         version: "{{ branch }}"
         force: true
 
-    - name: Install npm dependencies
-      command: npm install
+    - name: Update Node.js and npm
+      shell: |
+        sudo npm cache clean -f
+        sudo npm install -g n
+        sudo n stable
+        sudo npm install -g npm@latest
+      ignore_errors: yes
+
+    - name: Clean npm cache
+      shell: npm cache clean --force
       args:
-        chdir: "{{ app_dir }}"
-      become: yes
-      become_user: "{{ deploy_user }}"
+        chdir: /opt/stage_5b
+      ignore_errors: yes
+
+    - name: Remove old package-lock and node_modules
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /opt/stage_5b/package-lock.json
+        - /opt/stage_5b/node_modules
+      ignore_errors: yes
+
+    - name: Install npm dependencies
+      shell: npm install
+      args:
+        chdir: /opt/stage_5b
+      ignore_errors: yes
+      register: npm_install_result
+
+    - name: Debug npm install result
+      debug:
+        msg: "npm install result: {{ npm_install_result.stderr }}"
+      when: npm_install_result.failed
+
+
+    # - name: Install npm dependencies
+    #   command: npm install
+    #   args:
+    #     chdir: "{{ app_dir }}"
+    #   become: yes
+    #   become_user: "{{ deploy_user }}"
 
     - name: Build NestJS application
       command: npm run build
