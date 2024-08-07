@@ -43,15 +43,19 @@
       when: permission_check.failed
 
     - name: Check for running processes in /opt/stage_5b
-      shell: "lsof +D /opt/stage_5b"
+      shell: "lsof +D /opt/stage_5b || true"
       register: lsof_output
-      failed_when: lsof_output.rc not in [0, 1]
+      failed_when: false
       ignore_errors: true
+
+    - name: Stop PM2 processes if they are using /opt/stage_5b
+      command: pm2 stop all
+      when: "'/opt/stage_5b' in lsof_output.stdout"
 
     - name: Fail if there are processes accessing /opt/stage_5b
       fail:
         msg: "Processes are currently accessing /opt/stage_5b. Please ensure no processes are using this directory before deployment."
-      when: lsof_output.stdout != ''
+      when: "'/opt/stage_5b' in lsof_output.stdout"
 
     - name: Clean up application directory if it exists
       file:
@@ -253,19 +257,21 @@
         user: guest
         password: guest
         vhost: /
-        configure_priv: .*
-        read_priv: .*
-        write_priv: .*
+        permissions: ".* .* .*"
         state: present
 
-    - name: Configure environment variables
-      copy:
-        dest: "{{ app_dir }}/.env"
-        content: |
-          DATABASE_URL=postgres://{{ db_user }}:{{ pg_password }}@{{ db_host }}:{{ db_port }}/{{ db_name }}
-          RABBITMQ_URL=amqp://guest:guest@localhost:5672/
-          PORT=3000
-        mode: '0644'
+    - name: Set RabbitMQ admin password
+      rabbitmq_user:
+        user: guest
+        password: "{{ rabbitmq_admin_password }}"
+        state: present
+        tags: administrator
+
+    - name: Ensure pm2 is installed globally
+      npm:
+        name: pm2
+        state: present
+        global: yes
 
     - name: Save pm2 process list
       shell: pm2 save
