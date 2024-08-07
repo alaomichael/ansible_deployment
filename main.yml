@@ -570,7 +570,7 @@
           After=network.target
 
           [Service]
-          ExecStart=/usr/bin/node {{ app_dir }}/dist/src/main.js
+          ExecStart=/usr/local/bin/node {{ app_dir }}/dist/main.js
           Restart=always
           User=hng
           Group=hng
