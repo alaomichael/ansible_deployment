@@ -12,6 +12,8 @@
 #     db_host: 'localhost'
 #     db_port: 5432
 #     ansible_remote_tmp: "/tmp/ansible_tmp"
+#     node_version: "18"  # Specify the version of Node.js to use
+#     nginx_site_name: "stage_5b"
 
 #   tasks:
 #     - name: Ensure /tmp/ansible_tmp directory has correct permissions
@@ -104,8 +106,8 @@
 #       shell: |
 #         export NVM_DIR="$HOME/.nvm"
 #         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-#         nvm install 18
-#         nvm use 18
+#         nvm install {{ node_version }}
+#         nvm use {{ node_version }}
 #       environment:
 #         HOME: "{{ ansible_env.HOME }}"
 #       args:
@@ -124,6 +126,17 @@
 #         export NVM_DIR="$HOME/.nvm"
 #         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 #         npm install
+#       environment:
+#         HOME: "{{ ansible_env.HOME }}"
+#       args:
+#         chdir: "{{ app_dir }}"
+#         executable: /bin/bash
+
+#     - name: Build the application
+#       shell: |
+#         export NVM_DIR="$HOME/.nvm"
+#         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+#         npm run build
 #       environment:
 #         HOME: "{{ ansible_env.HOME }}"
 #       args:
@@ -160,7 +173,7 @@
 #       pip:
 #         name: psycopg2-binary
 #         state: present        
-    
+
 #     - name: Ensure PostgreSQL is running
 #       service:
 #         name: postgresql
@@ -208,7 +221,7 @@
 #         login_host: localhost
 #         login_port: 5432
 #         encrypted: true
-#       no_log: false  # Temporarily turn off no_log to view potential errors
+#       no_log: false
 
 #     - name: Grant all privileges on the database to the PostgreSQL user
 #       postgresql_query:
@@ -218,7 +231,7 @@
 #         login_password: "{{ pg_password }}"
 #         login_host: localhost
 #         login_port: 5432
-#       no_log: false  # Temporarily turn off no_log to view potential errors
+#       no_log: false
 
 #     - name: Ensure RabbitMQ is running
 #       service:
@@ -245,14 +258,35 @@
 #           PORT=3000
 #         mode: '0644'
 
-#     - name: Start the application
-#       command: "nohup npm run start:prod > /var/log/stage_5b/out.log 2> /var/log/stage_5b/error.log &"
-#       args:
-#         chdir: "{{ app_dir }}"
+#     - name: Create systemd service file for NestJS application
+#       copy:
+#         dest: /etc/systemd/system/nestjs-app.service
+#         content: |
+#           [Unit]
+#           Description=NestJS Application
+#           After=network.target
+
+#           [Service]
+#           ExecStart=/usr/local/bin/node {{ app_dir }}/dist/main.js
+#           Restart=always
+#           User=hng
+#           Group=hng
+#           Environment=NODE_ENV=production
+#           WorkingDirectory={{ app_dir }}
+
+#           [Install]
+#           WantedBy=multi-user.target
+#       notify: Restart NestJS
+
+#     - name: Ensure NestJS application service is enabled
+#       systemd:
+#         name: nestjs-app
+#         enabled: yes
+#         state: started
 
 #     - name: Set ownership of log files
 #       file:
-#         path: "/var/log/stage_5b"
+#         path: "/var/log/{{ nginx_site_name }}"
 #         state: directory
 #         recurse: yes
 #         owner: hng
@@ -260,7 +294,7 @@
 
 #     - name: Configure Nginx to reverse proxy
 #       copy:
-#         dest: /etc/nginx/sites-available/stage_5b
+#         dest: /etc/nginx/sites-available/{{ nginx_site_name }}
 #         content: |
 #           server {
 #               listen 80;
@@ -279,8 +313,8 @@
 
 #     - name: Enable Nginx site
 #       file:
-#         src: /etc/nginx/sites-available/stage_5b
-#         dest: /etc/nginx/sites-enabled/stage_5b
+#         src: /etc/nginx/sites-available/{{ nginx_site_name }}
+#         dest: /etc/nginx/sites-enabled/{{ nginx_site_name }}
 #         state: link
 
 #     - name: Remove default Nginx site
@@ -299,6 +333,10 @@
 #         name: postgresql
 #         state: restarted
 
+#     - name: Restart NestJS
+#       systemd:
+#         name: nestjs-app
+#         state: restarted
 
 
 ---
@@ -561,31 +599,79 @@
           PORT=3000
         mode: '0644'
 
-    - name: Create systemd service file for NestJS application
+    - name: Create init.d service script for NestJS application
       copy:
-        dest: /etc/systemd/system/nestjs-app.service
+        dest: /etc/init.d/nestjs-app
         content: |
-          [Unit]
-          Description=NestJS Application
-          After=network.target
+          #!/bin/sh
+          # /etc/init.d/nestjs-app
+          # Short-Description: Start and stop the NestJS application
+          # Description: Controls the NestJS application service
 
-          [Service]
-          ExecStart=/usr/local/bin/node {{ app_dir }}/dist/main.js
-          Restart=always
-          User=hng
-          Group=hng
-          Environment=NODE_ENV=production
-          WorkingDirectory={{ app_dir }}
+          ### BEGIN INIT INFO
+          # Provides:          nestjs-app
+          # Required-Start:    $remote_fs $syslog
+          # Required-Stop:     $remote_fs $syslog
+          # Default-Start:     2 3 4 5
+          # Default-Stop:      0 1 6
+          # Short-Description: Start daemon at boot time
+          # Description:       Enable service provided by daemon.
+          ### END INIT INFO
 
-          [Install]
-          WantedBy=multi-user.target
+          NAME=nestjs-app
+          APP_DIR="{{ app_dir }}"
+          NODE_EXEC=/usr/local/bin/node
+          SCRIPT=$APP_DIR/dist/main.js
+          LOGFILE=/var/log/nestjs-app.log
+          PIDFILE=/var/run/nestjs-app.pid
+
+          start() {
+              echo "Starting $NAME..."
+              cd $APP_DIR
+              $NODE_EXEC $SCRIPT > $LOGFILE 2>&1 &
+              echo $! > $PIDFILE
+              echo "$NAME started with PID $(cat $PIDFILE)"
+          }
+
+          stop() {
+              echo "Stopping $NAME..."
+              if [ -f $PIDFILE ]; then
+                  kill $(cat $PIDFILE)
+                  rm -f $PIDFILE
+                  echo "$NAME stopped."
+              else
+                  echo "$NAME is not running."
+              fi
+          }
+
+          case "$1" in
+              start)
+                  start
+                  ;;
+              stop)
+                  stop
+                  ;;
+              restart)
+                  stop
+                  start
+                  ;;
+              *)
+                  echo "Usage: $0 {start|stop|restart}"
+                  exit 1
+                  ;;
+          esac
+
+          exit 0
+      mode: '0755'
       notify: Restart NestJS
 
-    - name: Ensure NestJS application service is enabled
-      systemd:
-        name: nestjs-app
-        enabled: yes
-        state: started
+    - name: Enable NestJS application service
+      shell: update-rc.d nestjs-app defaults
+      args:
+        warn: false
+
+    - name: Start NestJS application service
+      shell: service nestjs-app start
 
     - name: Set ownership of log files
       file:
@@ -637,6 +723,4 @@
         state: restarted
 
     - name: Restart NestJS
-      systemd:
-        name: nestjs-app
-        state: restarted
+      shell: service nestjs-app restart
