@@ -455,6 +455,12 @@
         chdir: "{{ ansible_env.HOME }}"
         executable: /bin/bash
 
+    - name: Install pm2 globally
+      npm:
+        name: pm2
+        state: present
+        global: yes
+
     - name: Clone the devops branch of the repository
       git:
         repo: "{{ repo_url }}"
@@ -599,79 +605,22 @@
           PORT=3000
         mode: '0644'
 
-    - name: Create init.d service script for NestJS application
-      copy:
-        dest: /etc/init.d/nestjs-app
-        content: |
-          #!/bin/sh
-          # /etc/init.d/nestjs-app
-          # Short-Description: Start and stop the NestJS application
-          # Description: Controls the NestJS application service
+    - name: Start NestJS application with pm2
+      shell: |
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        pm2 start dist/main.js --name nestjs-app
+      args:
+        chdir: "{{ app_dir }}"
+        executable: /bin/bash
 
-          ### BEGIN INIT INFO
-          # Provides:          nestjs-app
-          # Required-Start:    $remote_fs $syslog
-          # Required-Stop:     $remote_fs $syslog
-          # Default-Start:     2 3 4 5
-          # Default-Stop:      0 1 6
-          # Short-Description: Start daemon at boot time
-          # Description:       Enable service provided by daemon.
-          ### END INIT INFO
+    - name: Save pm2 process list
+      shell: pm2 save
 
-          NAME=nestjs-app
-          APP_DIR="{{ app_dir }}"
-          NODE_EXEC=/usr/local/bin/node
-          SCRIPT=$APP_DIR/dist/main.js
-          LOGFILE=/var/log/nestjs-app.log
-          PIDFILE=/var/run/nestjs-app.pid
-
-          start() {
-              echo "Starting $NAME..."
-              cd $APP_DIR
-              $NODE_EXEC $SCRIPT > $LOGFILE 2>&1 &
-              echo $! > $PIDFILE
-              echo "$NAME started with PID $(cat $PIDFILE)"
-          }
-
-          stop() {
-              echo "Stopping $NAME..."
-              if [ -f $PIDFILE ]; then
-                  kill $(cat $PIDFILE)
-                  rm -f $PIDFILE
-                  echo "$NAME stopped."
-              else
-                  echo "$NAME is not running."
-              fi
-          }
-
-          case "$1" in
-              start)
-                  start
-                  ;;
-              stop)
-                  stop
-                  ;;
-              restart)
-                  stop
-                  start
-                  ;;
-              *)
-                  echo "Usage: $0 {start|stop|restart}"
-                  exit 1
-                  ;;
-          esac
-
-          exit 0
-      mode: '0755'
-      notify: Restart NestJS
-
-    - name: Enable NestJS application service
-      shell: update-rc.d nestjs-app defaults
+    - name: Ensure pm2 starts on boot
+      shell: pm2 startup systemd -u {{ ansible_env.USER }} --hp {{ ansible_env.HOME }}
       args:
         warn: false
-
-    - name: Start NestJS application service
-      shell: service nestjs-app start
 
     - name: Set ownership of log files
       file:
@@ -723,4 +672,4 @@
         state: restarted
 
     - name: Restart NestJS
-      shell: service nestjs-app restart
+      shell: pm2 restart nestjs-app
