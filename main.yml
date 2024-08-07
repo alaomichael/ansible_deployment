@@ -49,8 +49,21 @@
       ignore_errors: true
 
     - name: Stop PM2 processes if they are using /opt/stage_5b
-      command: pm2 stop all || true
-      when: "'/opt/stage_5b' in lsof_output.stdout"
+      shell: pm2 stop all || true
+      args:
+        chdir: "{{ app_dir }}"
+      ignore_errors: yes
+      register: pm2_stop_result
+
+    - name: Debug PM2 stop result
+      debug:
+        msg: "PM2 stop result: {{ pm2_stop_result.stdout }}"
+      when: pm2_stop_result.failed
+
+
+    # - name: Stop PM2 processes if they are using /opt/stage_5b
+    #   command: pm2 stop all || true
+    #   when: "'/opt/stage_5b' in lsof_output.stdout"
 
     - name: Clean up application directory if it exists
       file:
