@@ -1,6 +1,8 @@
 ---
 - name: Automated Deployment and Configuration with Ansible for NESTJS
   hosts: hng
+  collections:
+    - community.rabbitmq
   become: yes
   vars:
     repo_url: 'https://github.com/hngprojects/hng_boilerplate_nestjs.git'
@@ -308,7 +310,7 @@
             state: present
 
         - name: Set RabbitMQ user permissions
-          community.rabbitmq.rabbitmq_user_permissions:
+          community.rabbitmq.rabbitmq_user:
             user: guest
             vhost: /
             permissions: ".* .* .*"
