@@ -16,6 +16,7 @@
     ansible_remote_tmp: "/tmp/ansible_tmp"
     node_version: "18"
     nginx_site_name: "stage_5b"
+    rabbitmq_admin_password: 'guest'
     deploy_user: "{{ ansible_user.split('@')[0] }}"  # Extract username before @
 
   tasks:
@@ -54,7 +55,7 @@
           failed_when: false
 
         - name: Stop PM2 processes if any
-          shell: pm2 stop all || true
+          shell: pm2 stop {{ app_dir }} || true
           args:
             chdir: "{{ app_dir }}"
           register: pm2_stop_result
@@ -227,7 +228,7 @@
             login_host: localhost
             login_port: 5432
             encrypted: true
-          no_log: false
+          no_log: true
 
         - name: Configure PostgreSQL database
           postgresql_db:
@@ -261,33 +262,6 @@
             login_host: localhost
             login_port: 5432
           no_log: false
-
-    # - name: Ensure RabbitMQ is running and configure it
-      block:
-        - name: Ensure RabbitMQ is running
-          service:
-            name: rabbitmq-server
-            state: started
-            enabled: yes
-
-        - name: Add RabbitMQ user and set permissions
-          rabbitmq_user:
-            user: guest
-            password: "{{ rabbitmq_admin_password }}"
-            state: present
-            tags: administrator
-
-        - name: Add RabbitMQ virtual host
-          rabbitmq_vhost:
-            vhost: /
-            state: present
-
-        - name: Set RabbitMQ user permissions
-          rabbitmq_user_permissions:
-            user: guest
-            vhost: /
-            permissions: ".* .* .*"
-            state: present
 
     - name: Ensure RabbitMQ is running and configure it
       block:
