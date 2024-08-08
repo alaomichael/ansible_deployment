@@ -157,17 +157,26 @@
         name: "@nestjs/cli"
         global: yes
 
-    - name: Ensure {{ deploy_user }} owns the application directory
-      file:
-        path: "{{ app_dir }}"
-        state: directory
-        owner: "{{ deploy_user }}"
-        group: "{{ deploy_user }}"
-        recurse: yes
+
+    # - name: Ensure {{ deploy_user }} owns the application directory
+    #   file:
+    #     path: "{{ app_dir }}"
+    #     state: directory
+    #     owner: "{{ deploy_user }}"
+    #     group: "{{ deploy_user }}"
+    #     recurse: yes
 
 
     - name: Build and start NestJS application with pm2
       block:
+        - name: Ensure {{ deploy_user }} owns the application directory
+          file:
+            path: "{{ app_dir }}"
+            state: directory
+            owner: "{{ deploy_user }}"
+            group: "{{ deploy_user }}"
+            recurse: yes
+
         - name: Build NestJS application
           command: npm run build
           args:
