@@ -60,11 +60,6 @@
         msg: "PM2 stop result: {{ pm2_stop_result.stdout }}"
       when: pm2_stop_result.failed
 
-
-    # - name: Stop PM2 processes if they are using /opt/stage_5b
-    #   command: pm2 stop all || true
-    #   when: "'/opt/stage_5b' in lsof_output.stdout"
-
     - name: Clean up application directory if it exists
       file:
         path: "{{ app_dir }}"
@@ -151,7 +146,7 @@
     - name: Clean npm cache
       shell: npm cache clean --force
       args:
-        chdir: /opt/stage_5b
+        chdir: "{{ app_dir }}" #/opt/stage_5b
       ignore_errors: yes
 
     - name: Remove old package-lock and node_modules
@@ -159,14 +154,14 @@
         path: "{{ item }}"
         state: absent
       with_items:
-        - /opt/stage_5b/package-lock.json
-        - /opt/stage_5b/node_modules
+        - "{{ app_dir }}/package-lock.json" #/opt/stage_5b/package-lock.json
+        - "{{ app_dir }}/node_modules" #/opt/stage_5b/node_modules
       ignore_errors: yes
 
     - name: Install npm dependencies
       shell: npm install
       args:
-        chdir: /opt/stage_5b
+        chdir: "{{ app_dir }}" #/opt/stage_5b
       ignore_errors: yes
       register: npm_install_result
 
@@ -182,6 +177,12 @@
     #     chdir: "{{ app_dir }}"
     #   become: yes
     #   become_user: "{{ deploy_user }}"
+
+
+    - name: Install NestJS CLI
+      npm:
+        name: "@nestjs/cli"
+        global: yes
 
     - name: Build NestJS application
       command: npm run build
