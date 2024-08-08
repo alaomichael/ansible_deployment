@@ -260,7 +260,7 @@
             login_port: 5432
           no_log: false
 
-    - name: Ensure RabbitMQ is running and configure it
+    # - name: Ensure RabbitMQ is running and configure it
       block:
         - name: Ensure RabbitMQ is running
           service:
@@ -286,6 +286,34 @@
             vhost: /
             permissions: ".* .* .*"
             state: present
+
+    - name: Ensure RabbitMQ is running and configure it
+      block:
+        - name: Ensure RabbitMQ is running
+          service:
+            name: rabbitmq-server
+            state: started
+            enabled: yes
+
+        - name: Add RabbitMQ user
+          community.rabbitmq.rabbitmq_user:
+            user: guest
+            password: "{{ rabbitmq_admin_password }}"
+            state: present
+            tags: administrator
+
+        - name: Add RabbitMQ virtual host
+          community.rabbitmq.rabbitmq_vhost:
+            vhost: /
+            state: present
+
+        - name: Set RabbitMQ user permissions
+          community.rabbitmq.rabbitmq_user_permissions:
+            user: guest
+            vhost: /
+            permissions: ".* .* .*"
+            state: present
+
 
     - name: Configure Nginx as a reverse proxy
       block:
