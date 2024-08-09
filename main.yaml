@@ -96,6 +96,13 @@
         recurse: yes
       become: yes
 
+    - name: Allow deploy user to run npm commands with sudo
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        line: "{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/npm, /usr/bin/node"
+        validate: 'visudo -cf %s'
+      become: yes
+
     - name: Clean npm cache and old dependencies
       shell: |
         npm cache clean --force
@@ -112,12 +119,12 @@
       become: yes
       become_user: "{{ deploy_user }}"
 
-    - name: Allow deploy user to run npm commands with sudo
-      ansible.builtin.lineinfile:
-        path: /etc/sudoers
-        line: "{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/npm, /usr/bin/node"
-        validate: 'visudo -cf %s'
-      become: yes
+    # - name: Allow deploy user to run npm commands with sudo
+    #   ansible.builtin.lineinfile:
+    #     path: /etc/sudoers
+    #     line: "{{ deploy_user }} ALL=(ALL) NOPASSWD: /usr/bin/npm, /usr/bin/node"
+    #     validate: 'visudo -cf %s'
+    #   become: yes
 
     - name: Build NestJS application
       command: sudo -E npm run build
