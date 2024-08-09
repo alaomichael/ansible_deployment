@@ -157,13 +157,25 @@
         name: "@nestjs/cli"
         global: yes
 
-    - name: Ensure {{ deploy_user }} owns the application directory
-      file:
+    - name: Ensure {{ deploy_user }} owns the application directory with sudo
+      ansible.builtin.file:
         path: "{{ app_dir }}"
         state: directory
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
         recurse: yes
+      become: yes
+
+    - name: Confirm ownership of {{ app_dir }}
+      command: ls -ld {{ app_dir }}
+      register: dir_owner
+    - debug:
+        msg: "Ownership of {{ app_dir }}: {{ dir_owner.stdout }}"
+
+    - name: Ensure directory permissions are correct
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        mode: '0755'
 
     - name: Build NestJS application
       command: npm run build
