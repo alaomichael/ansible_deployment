@@ -1,4 +1,3 @@
----
 - name: Automated Deployment and Configuration with Ansible for NESTJS
   hosts: hng
   collections:
@@ -66,11 +65,14 @@
             msg: "PM2 stop result: {{ pm2_stop_result.stdout }}"
           when: pm2_stop_result.failed
 
-    - name: Recreate application directory
+    - name: Recreate application directory with appropriate permissions
       file:
         path: "{{ app_dir }}"
         state: directory
         mode: '0755'
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        recurse: yes
 
     - name: Update system packages and install dependencies
       apt:
@@ -157,12 +159,13 @@
         name: "@nestjs/cli"
         global: yes
 
-    - name: Ensure {{ deploy_user }} owns the application directory with sudo
+    - name: Ensure directory permissions and ownership
       ansible.builtin.file:
         path: "{{ app_dir }}"
         state: directory
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
+        mode: '0755'
         recurse: yes
       become: yes
 
@@ -171,11 +174,6 @@
       register: dir_owner
     - debug:
         msg: "Ownership of {{ app_dir }}: {{ dir_owner.stdout }}"
-
-    - name: Ensure directory permissions are correct
-      ansible.builtin.file:
-        path: "{{ app_dir }}"
-        mode: '0755'
 
     - name: Build NestJS application
       command: npm run build
@@ -316,9 +314,10 @@
             mode: '0644'
 
         - name: Enable the Nginx site
-          command: "ln -s /etc/nginx/sites-available/{{ nginx_site_name }} /etc/nginx/sites-enabled/{{ nginx_site_name }}"
-          args:
-            removes: "/etc/nginx/sites-enabled/{{ nginx_site_name }}"
+          file:
+            src: "/etc/nginx/sites-available/{{ nginx_site_name }}"
+            dest: "/etc/nginx/sites-enabled/{{ nginx_site_name }}"
+            state: link
           notify: Restart Nginx
 
     - name: Ensure the nginx service is started and enabled
@@ -337,6 +336,348 @@
       service:
         name: nginx
         state: restarted
+
+
+
+# ---
+# - name: Automated Deployment and Configuration with Ansible for NESTJS
+#   hosts: hng
+#   collections:
+#     - community.rabbitmq
+#   become: yes
+#   vars:
+#     repo_url: 'https://github.com/hngprojects/hng_boilerplate_nestjs.git'
+#     branch: 'devops'
+#     app_dir: '/opt/stage_5b'
+#     pg_password: 'babatunde_25'
+#     db_name: 'ansible_deployment'
+#     db_user: 'alaomichael'
+#     db_host: 'localhost'
+#     db_port: 5432
+#     ansible_remote_tmp: "/tmp/ansible_tmp"
+#     node_version: "18"
+#     nginx_site_name: "stage_5b"
+#     rabbitmq_admin_password: 'guest'
+#     deploy_user: "{{ ansible_user.split('@')[0] }}"  # Extract username before @
+
+#   tasks:
+#     - name: Ensure necessary directories with proper permissions
+#       file:
+#         path: "{{ item.path }}"
+#         state: directory
+#         mode: "{{ item.mode }}"
+#         owner: "{{ item.owner | default('root') }}"
+#         group: "{{ item.group | default('root') }}"
+#       loop:
+#         - { path: "{{ ansible_remote_tmp }}", mode: '1777' }
+#         - { path: /tmp, mode: '1777' }
+#         - { path: "{{ app_dir }}", mode: '0755' }
+#         - { path: /var/log/stage_5b, mode: '0755' }
+#         - { path: /var/secrets, mode: '0755' }
+
+#     - name: Verify user permissions and handle errors
+#       block:
+#         - name: Check if user has permissions to manage /opt
+#           command: test -w /opt
+#           register: permission_check
+#           failed_when: permission_check.rc != 0
+
+#         - name: Fail if user lacks permissions
+#           fail:
+#             msg: "User does not have the necessary permissions to delete and create directories under /opt/. Ensure the user has sufficient privileges."
+#           when: permission_check.failed
+#       ignore_errors: yes
+
+#     - name: Manage PM2 processes
+#       block:
+#         - name: Check for running processes in {{ app_dir }}
+#           shell: "lsof +D {{ app_dir }} || true"
+#           register: lsof_output
+#           failed_when: false
+
+#         - name: Stop PM2 processes if any
+#           shell: pm2 stop {{ app_dir }} || true
+#           args:
+#             chdir: "{{ app_dir }}"
+#           register: pm2_stop_result
+#           ignore_errors: yes
+
+#         - name: Debug PM2 stop result if failed
+#           debug:
+#             msg: "PM2 stop result: {{ pm2_stop_result.stdout }}"
+#           when: pm2_stop_result.failed
+
+#     - name: Recreate application directory
+#       file:
+#         path: "{{ app_dir }}"
+#         state: directory
+#         mode: '0755'
+
+#     - name: Update system packages and install dependencies
+#       apt:
+#         update_cache: yes
+#         name:
+#           - git
+#           - python3-pip
+#           - nginx
+#           - postgresql
+#           - postgresql-contrib
+#           - rabbitmq-server
+#           - npm
+#           - curl
+#           - wget
+#           - gnupg
+#           - lsb-release
+#         state: present
+
+#     - name: Install nvm (Node Version Manager) and Node.js
+#       shell: |
+#         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+#         export NVM_DIR="$HOME/.nvm"
+#         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+#         [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+#         nvm install {{ node_version }}
+#         nvm use {{ node_version }}
+#       environment:
+#         HOME: "{{ ansible_env.HOME }}"
+#       args:
+#         chdir: "{{ ansible_env.HOME }}"
+#         executable: /bin/bash
+
+#     - name: Install and configure pm2 globally
+#       npm:
+#         name: pm2
+#         state: present
+#         global: yes
+
+#     - name: Clone the repository and clean up previous installations
+#       block:
+#         - name: Clone the devops branch of the repository
+#           git:
+#             repo: "{{ repo_url }}"
+#             dest: "{{ app_dir }}"
+#             version: "{{ branch }}"
+#             force: true
+
+#         - name: Clean npm cache and old dependencies
+#           shell: |
+#             npm cache clean --force
+#             rm -rf package-lock.json node_modules
+#           args:
+#             chdir: "{{ app_dir }}"
+#           ignore_errors: yes
+
+#         - name: Increase NPM timeout settings
+#           shell: |
+#             npm config set fetch-retry-mintimeout 20000
+#             npm config set fetch-retry-maxtimeout 120000
+#           args:
+#             chdir: "{{ app_dir }}"
+#           ignore_errors: yes
+
+#         - name: Install npm dependencies
+#           shell: npm install --legacy-peer-deps
+#           args:
+#             chdir: "{{ app_dir }}"
+#           register: npm_install_result
+#           ignore_errors: yes
+
+#         - name: Debug npm install result if failed
+#           debug:
+#             msg: "npm install result: {{ npm_install_result.stderr }}"
+#           when: npm_install_result.failed
+
+#         - name: Ensure @nestjs/swagger is installed
+#           shell: npm install @nestjs/swagger --legacy-peer-deps
+#           args:
+#             chdir: "{{ app_dir }}"
+#           when: npm_install_result.failed
+
+#     - name: Install NestJS CLI globally
+#       npm:
+#         name: "@nestjs/cli"
+#         global: yes
+
+#     - name: Ensure {{ deploy_user }} owns the application directory with sudo
+#       ansible.builtin.file:
+#         path: "{{ app_dir }}"
+#         state: directory
+#         owner: "{{ deploy_user }}"
+#         group: "{{ deploy_user }}"
+#         recurse: yes
+#       become: yes
+
+#     - name: Confirm ownership of {{ app_dir }}
+#       command: ls -ld {{ app_dir }}
+#       register: dir_owner
+#     - debug:
+#         msg: "Ownership of {{ app_dir }}: {{ dir_owner.stdout }}"
+
+#     - name: Ensure directory permissions are correct
+#       ansible.builtin.file:
+#         path: "{{ app_dir }}"
+#         mode: '0755'
+
+#     - name: Build NestJS application
+#       command: npm run build
+#       args:
+#         chdir: "{{ app_dir }}"
+#       become: yes
+#       become_user: "{{ deploy_user }}"
+#       register: build_result
+#       ignore_errors: yes
+
+#     - name: Debug build process
+#       debug:
+#         msg: "Build process stdout: {{ build_result.stdout }} stderr: {{ build_result.stderr }}"
+#       when: build_result.failed
+
+#     - name: Start NestJS application with pm2
+#       shell: |
+#         export NVM_DIR="$HOME/.nvm"
+#         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+#         pm2 start dist/main.js --name nestjs-app
+#       args:
+#         chdir: "{{ app_dir }}"
+#       become: yes
+#       become_user: "{{ deploy_user }}"
+
+#     - name: Add hng user with sudo privileges
+#       user:
+#         name: hng
+#         shell: /bin/bash
+#         groups: sudo
+#         append: yes
+
+#     - name: Save PostgreSQL admin credentials securely
+#       copy:
+#         dest: /var/secrets/pg_pw.txt
+#         content: "{{ db_user }}:{{ pg_password }}"
+#         mode: '0600'
+
+#     - name: Install psycopg2 dependencies and ensure PostgreSQL is running
+#       block:
+#         - name: Install psycopg2 dependencies
+#           apt:
+#             name:
+#               - python3-psycopg2
+#               - python3-bcrypt
+#             state: present
+
+#         - name: Ensure psycopg2 is installed
+#           pip:
+#             name: psycopg2-binary
+#             state: present
+
+#         - name: Ensure PostgreSQL is running
+#           service:
+#             name: postgresql
+#             state: started
+#             enabled: yes
+
+#     - name: Configure PostgreSQL and create database/user
+#       block:
+#         - name: Configure PostgreSQL to use md5 password authentication
+#           lineinfile:
+#             path: /etc/postgresql/12/main/pg_hba.conf
+#             regexp: '^local\s+all\s+all\s+peer'
+#             line: 'local   all             all                                     md5'
+#           notify: Restart PostgreSQL
+
+#         - name: Set PostgreSQL password for user postgres
+#           postgresql_user:
+#             name: postgres
+#             password: "{{ pg_password }}"
+#             state: present
+#             login_user: postgres
+#             login_password: "{{ pg_password }}"
+#             login_host: localhost
+#             login_port: 5432
+#             encrypted: true
+#           no_log: true
+
+#         - name: Configure PostgreSQL database
+#           postgresql_db:
+#             name: "{{ db_name }}"
+#             state: present
+#             login_user: postgres
+#             login_password: "{{ pg_password }}"
+#             port: 5432
+#             ssl_mode: prefer
+#             maintenance_db: postgres
+#           no_log: false
+
+#         - name: Create PostgreSQL user
+#           postgresql_user:
+#             name: "{{ db_user }}"
+#             password: "{{ pg_password }}"
+#             state: present
+#             login_user: postgres
+#             login_password: "{{ pg_password }}"
+#             login_host: localhost
+#             login_port: 5432
+#             encrypted: true
+#           no_log: false
+
+#         - name: Grant all privileges on the database to the PostgreSQL user
+#           postgresql_query:
+#             db: "{{ db_name }}"
+#             query: "GRANT ALL PRIVILEGES ON DATABASE {{ db_name }} TO {{ db_user }};"
+#             login_user: postgres
+#             login_password: "{{ pg_password }}"
+#             login_host: localhost
+#             login_port: 5432
+#           no_log: false
+
+#     - name: Ensure RabbitMQ is running and configure admin user
+#       block:
+#         - name: Ensure RabbitMQ is running
+#           service:
+#             name: rabbitmq-server
+#             state: started
+#             enabled: yes
+
+#         - name: Set RabbitMQ admin user password
+#           rabbitmq_user:
+#             user: admin
+#             password: "{{ rabbitmq_admin_password }}"
+#             state: present
+#             tags: administrator
+#             vhost: /
+#           no_log: true
+
+#     - name: Configure Nginx
+#       block:
+#         - name: Set up Nginx configuration for stage_5b
+#           copy:
+#             src: nginx-stage_5b.conf
+#             dest: /etc/nginx/sites-available/{{ nginx_site_name }}
+#             owner: root
+#             group: root
+#             mode: '0644'
+
+#         - name: Enable the Nginx site
+#           command: "ln -s /etc/nginx/sites-available/{{ nginx_site_name }} /etc/nginx/sites-enabled/{{ nginx_site_name }}"
+#           args:
+#             removes: "/etc/nginx/sites-enabled/{{ nginx_site_name }}"
+#           notify: Restart Nginx
+
+#     - name: Ensure the nginx service is started and enabled
+#       service:
+#         name: nginx
+#         state: started
+#         enabled: yes
+
+#   handlers:
+#     - name: Restart PostgreSQL
+#       service:
+#         name: postgresql
+#         state: restarted
+
+#     - name: Restart Nginx
+#       service:
+#         name: nginx
+#         state: restarted
 
 
 
